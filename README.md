@@ -1,7 +1,7 @@
 # lbne-larrel
  
-David Adams
-October 2014
+David Adams  
+October 2014  
 Updated October 13, 2014
 
 Package to create lbnecode releases.
