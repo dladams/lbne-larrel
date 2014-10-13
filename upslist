@@ -1,0 +1,10 @@
+#!/bin/sh
+
+if [ -z "$1" -o "$1" = "-h" ]; then
+  echo Usage: $0 PRODUCT
+  exit 0
+fi
+
+source lbneinit.sh
+
+ups list -aK+ $1

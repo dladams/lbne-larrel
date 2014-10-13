@@ -1,0 +1,423 @@
+#!/bin/sh
+
+# David Adams
+# October, 2014
+#
+# Script to build an LBNE release.
+
+THISDIR=`dirname $0`
+
+OLDPROD=larsoft
+NEWPROD=lbnecode
+
+HELP=
+ENVCHK=
+REMDIR=
+DIRMAK=
+CHKOUT=
+VERUPD=
+BUILD=
+QUAL=e6:prof
+Test=
+OLDVERS=
+NEWVERS=
+COMMIT=
+ENDFLOW=
+PUSHBRA=
+PUSHTAG=
+UPSPROD=
+DEBUG=
+while getopts 'gherdcvbtlpuo:n:q:' flag; do
+  case "${flag}" in
+    g) DBG='true' ;;
+    h) HELP='true' ;;
+    e) ENVCHK='true' ;;
+    r) REMDIR='true' ;;
+    d) DIRMAK='true' ;;
+    c) CHKOUT='true' ;;
+    v) VERUPD='true' ;;
+    b) BUILD='true' ;;
+    t) TEST='true' ;;
+    l) COMMIT='true'; ENDFLOW='true' ;;
+    p) PUSHBRA='true'; PUSHTAG='true' ;;
+    o) OLDVERS="${OPTARG}" ;;
+    n) NEWVERS="${OPTARG}" ;;
+    q) QUAL="${OPTARG}" ;;
+    u) UPSPROD='true' ;;
+    *) "ERROR: Unexpected option ${flag}"; exit 1 ;;
+  esac
+done
+
+STAGE4=$BUILD$TEST$COMMIT$ENDFLOW$PUSHBRA$PUSHTAG
+STAGE3=$CHKOUT$VERUPD$STAGE4
+STAGE2=$UPSPROD$STAGE3
+STAGE1=$OLDVERS$NEWVERS$DIRMAK$STAGE2
+if [ -n "$DBG" ]; then
+  echo Stage 1: $STAGE1
+  echo Stage 2: $STAGE2
+  echo Stage 3: $STAGE3
+  echo Stage 4: $STAGE4
+fi
+if [ -z "$STAGE1" ]; then
+  HELP='true'
+fi
+
+if [ -n "$HELP" ]; then
+  echo "Usage: $0 [-hgerdcbtlp] [-o OLDVERS][-n NEWVERS][-q QUAL]"
+  echo "  -h: Help (this message)."
+  echo "  -g: Enable debugging messgages."
+  echo "  -e: Check environment"
+  echo "  -r: Remove existing development area."
+  echo "  -d: Create new development area."
+  echo "  -c: Check out product source."
+  echo "  -v: Start flow and update version in checked-out code."
+  echo "  -b: Build product."
+  echo "  -t: Test product."
+  echo "  -l: Commit local changes and end flow."
+  echo "  -p: Push tag to repository."
+  echo "  -u: Make UPS product"
+  echo "  -o OLDVERS: Set the version for the old product (larsoft)"
+  echo "  -n NEWVERS: Set the version for the new product (lbnecode)"
+  exit 0
+fi
+
+LINE="\n===================================="
+
+echo -e $LINE
+echo Initializing
+source $THISDIR/lbneinit.sh
+
+if [ -n "$ENVCHK" ]; then
+  echo -e $LINE
+  echo Checking environment
+  for NAME in setup git mrb mrbsetenv; do
+    if ! type $NAME >/dev/null 2>&1; then
+      echo ERROR: Initialization failed: $NAME not found.
+      exit 1
+    else
+      echo Found command $NAME
+    fi
+  done
+fi
+
+TOPDIR=`pwd`
+HISTFILE=$TOPDIR/history
+
+if [ -n "$REMDIR" ]; then
+  echo -e $LINE
+  echo Removing development area.
+  rm -rf workdir
+  rm -f $HISTFILE
+fi
+
+if [ ! -r workdir ]; then
+  echo -e $LINE
+  echo Creating workdir
+  if ! mkdir workdir; then
+    echo ERROR: Unable to create workdir
+    exit 1
+  fi
+  echo createdworkdir >> $HISTFILE
+fi
+cd workdir
+
+echo -e $LINE
+echo Setting old product version
+OLDVERSFILENAME=$TOPDIR/oldversion.txt
+if [ -r $OLDVERSFILENAME ]; then
+  OLDVERSFILE=`cat $OLDVERSFILENAME`
+  if [ -n "$OLDVERSFILE" -a "$OLDVERS" != "$OLDVERSFILE" ]; then
+    if [ -z "$OLDVERS" ]; then
+      OLDVERS=$OLDVERSFILE
+    else
+      echo "ERROR: Requested old version does not match previous value:"
+      echo "  $OLDVERS != $OLDVERSFILE"
+      exit 1
+      if [ -n "$OLDVERS" ]; then
+        OLDVERS=$OLDVERSFILE
+      fi
+    fi
+  fi
+else
+  if [ -n "$OLDVERS" ]; then
+    echo $OLDVERS >$OLDVERSFILENAME
+    echo setoldversion >> $HISTFILE
+  fi
+fi
+echo "Old product and version: $OLDPROD $OLDVERS"
+
+echo -e $LINE
+echo Setting new product version
+NEWVERSFILENAME=$TOPDIR/newversion.txt
+if [ -r $NEWVERSFILENAME ]; then
+  NEWVERSFILE=`cat $NEWVERSFILENAME`
+  if [ -n "$NEWVERSFILE" -a "$NEWVERS" != "$NEWVERSFILE" ]; then
+    if [ -z "$NEWVERS" ]; then
+      NEWVERS=$NEWVERSFILE
+    else
+      echo "ERROR: Requested new version does not match previous value:"
+      echo "  $NEWVERS != $NEWVERSFILE"
+      exit 1
+      if [ -n "$NEWVERS" ]; then
+        NEWVERS=$NEWVERSFILE
+      fi
+    fi
+  fi
+else
+  if [ -n "$NEWVERS" ]; then
+    echo $NEWVERS >$NEWVERSFILENAME
+    echo setnewversion >> $HISTFILE
+  fi
+fi
+if [ -z "$OLDVERS" ]; then
+  echo "Use -o to set old version."
+  exit 1
+fi
+if [ -z "$NEWVERS" ]; then
+  echo "Use -n to set new version."
+  exit 1
+fi
+echo "New product and version: $NEWPROD $NEWVERS"
+
+
+if [ -n "$DIRMAK" -a -z "$UPSPROD" ]; then
+  echo -e $LINE
+  echo Creating development area.
+  if [ -z "$OLDVERS" ]; then
+    echo "ERROR: Use -o to set old version."
+    exit 1
+  fi
+  if [ -z "$QUAL" ]; then
+    "ERROR: Product qualifier must defined."
+    exit 1
+  fi
+  if [ -r srcs ]; then
+    echo "ERROR: Development area already exists"
+    exit 1
+  fi
+  if ! mrb newDev -v $OLDVERS -q $QUAL; then
+    echo "ERROR: mrb newDev -v $OLDVERS -q $QUAL failed."
+    exit 1
+  fi
+   echo creatednewdev >> $HISTFILE
+fi
+
+if [ -z "$STAGE2" ]; then
+  echo -e $LINE
+  if [ -n "$DBG" ]; then echo Exiting before stage 2; fi
+  echo Done
+  exit 0
+fi
+
+if [ ! -r srcs -a -z "$UPSPROD" ]; then
+  echo "ERROR: Use -d to create development area"
+  exit 1
+fi
+echo Development area: `pwd`
+
+if [ -n "$UPSPROD" ]; then
+  echo -e $LINE
+  echo Building UPS product $NEWPROD $NEWVERS
+  rm -rf reldir
+  if ! mkdir reldir; then
+    echo "ERROR: Unable to to create release directory."
+    exit 1
+  fi
+  cd reldir
+  echo MRB_SOURCE=$MRB_SOURCE
+  if ! mrb newDev -v $OLDVERS -q $QUAL; then
+    echo "ERROR: Unable to make development area for $OLDVERS"
+    exit 1
+  fi
+  for DIR in localProducts*; do
+    echo "  $DIR"
+    source $DIR/setup
+  done
+  echo MRB_SOURCE=$MRB_SOURCE
+  cd $MRB_SOURCE
+  LOG=$TOPDIR/upscheckout.log
+  echo Checking out $NEWPROD $NEWVERS. Log is $LOG.
+  if ! mrb gitCheckout -t $NEWVERS $NEWPROD >$LOG 2>&1; then
+    echo "ERROR: Unable to check out $NEWPROD $NEWVERS"
+    exit 1
+  fi 
+  if grep ^error: $LOG; then
+    echo "ERROR: Error checking out $NEWPROD $NEWVERS:"
+    grep ^error: $LOG
+    exit 1
+  fi 
+  cd $MRB_BUILDDIR
+  mrbsetenv
+  echo Building. Log is $TOPDIR/upsbuild.log.
+  mrb b >$TOPDIR/upsbuild.log 2>&1
+  echo Making product. Log is $TOPDIR/upsmake.log.
+  mrb makePackage >$TOPDIR/upsmake.log 2>&1
+  echo -e $LINE
+  if [ -n "$DBG" ]; then echo Exiting after product build; fi
+  echo Done
+  exit 0
+fi
+
+if [ -z "$STAGE3" ]; then
+  echo -e $LINE
+  if [ -n "$DBG" ]; then echo Exiting before stage 3; fi
+  echo Done
+  exit 0
+fi
+
+echo -e $LINE
+echo Setting up $OLDPROD
+setup $OLDPROD $OLDVERS -q $QUAL
+
+echo -e $LINE
+echo Setting up local products
+for DIR in localProducts*; do
+  echo "  $DIR"
+  source $DIR/setup
+done
+echo MRB_SOURCE=$MRB_SOURCE
+cd $MRB_SOURCE
+
+if [ -n "$CHKOUT" ]; then
+  echo -e $LINE
+  echo Checking out $NEWPROD
+  if [ -r $NEWPROD ]; then
+    echo "ERROR: $NEWPROD is already checked out."
+    exit 1
+  fi
+  if ! mrb gitCheckout $NEWPROD; then
+    echo ERROR: Checkout failed
+    exit 1
+  fi
+  echo checkout >> $HISTFILE
+  cd $NEWPROD
+  git branch
+else
+  echo -e $LINE
+  echo Moving to product area.
+  if ! cd $NEWPROD; then
+    echo ERROR: Product area not found.
+    echo "ERROR: Use larrsoft -c to check out $NEWPROD"
+    exit 1
+  fi
+fi
+pwd
+
+if [ -n "$VERUPD" ]; then
+  echo -e $LINE
+  echo Starting flow
+  if grep startflow $HISTFILE 1>/dev/null 2>&1; then
+    echo ERROR: Flow is already started.
+    exit 1
+  fi
+  git flow release start $NEWVERS
+  echo startflow >> $HISTFILE
+  git branch
+fi
+
+if [ -n "$VERUPD" ]; then
+  echo -e $LINE
+  echo Setting $NEWPROD version to $NEWVERS
+  if grep versionupdate2 $HISTFILE 1>/dev/null 2>&1; then
+    echo ERROR: Version has already been updated.
+    exit 1
+  fi
+  mrb uv $NEWPROD $NEWVERS
+  echo versionupdate >> $HISTFILE
+  echo Local repository changes:
+  echo "----------------------------"
+  git diff ups/product_deps
+  echo "----------------------------"
+fi
+
+if [ -z "$STAGE4" ]; then
+  echo -e $LINE
+  if [ -n "$DBG" ]; then echo Exiting before stage 4; fi
+  echo Done
+  exit 0
+fi
+
+echo $LINE
+echo Setting up for build or test...
+cd $MRB_BUILDDIR
+pwd
+mrbsetenv
+
+if [ -n "$BUILD" ]; then
+  echo -e $LINE
+  echo Building...
+  if ! mrb build; then
+    echo Build failed.
+    echo buildfailed >> $HISTFILE
+    exit 1
+  fi
+  echo buildpassed >> $HISTFILE
+fi
+
+if [ -n "$TEST" ]; then
+  echo -e $LINE
+  echo Testing...
+  if ! mrb test; then
+    echo Test failed.
+    echo testfailed >> $HISTFILE
+    exit 1
+  fi
+  echo testpassed >> $HISTFILE
+fi
+
+if [ -n "$COMMIT" ]; then
+  echo -e $LINE
+  echo Committing flow...
+  if grep committed $HISTFILE 1>/dev/null 2>&1; then
+    echo Commit is already done.
+  else
+    cd $MRB_SOURCE/$NEWPROD
+    if ! git commit -a -m "Set package version to $NEWVERS"; then
+      echo ERROR: Git commit failed.
+      exit 1
+    fi
+    echo committed >> $HISTFILE
+  fi
+fi
+
+if [ -n "$ENDFLOW" ]; then
+  echo -e $LINE
+  echo Finishing flow...
+  cd $MRB_SOURCE/$NEWPROD
+  echo "***************"
+  # Capture the current git editor and change the value to something
+  # that always succeeds without changing the file.
+  OLDEDITOR=`git config --global core.editor`
+  git config --global core.editor true
+  if ! git flow release finish -m "Ended flow for $NEWPROD $NEWVERS" $NEWVERS; then
+    echo ERROR: Finishing flow failed.
+    exit 1
+  fi
+  git config --global core.editor $OLDEDITOR
+  echo "%%%%%%%%%%%%%%%"
+  echo flowfinished >> $HISTFILE
+fi
+
+if [ -n "$PUSHBRA" ]; then
+  echo -e $LINE
+  echo Pushing branches...
+  if ! git push origin master develop; then
+    echo ERROR: Branch push  failed.
+    exit 1
+  fi
+  echo branchespushed >> $HISTFILE
+fi
+
+if [ -n "$PUSHTAG" ]; then
+  echo -e $LINE
+  echo Pushing tags...
+  if ! git push --tags; then
+    echo ERROR: Tag push failed.
+    exit 1
+  fi
+  echo tagpushed >> $HISTFILE
+fi
+
+echo -e $LINE
+if [ -n "$DBG" ]; then echo Exiting after all stages; fi
+echo Done 3
