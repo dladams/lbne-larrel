@@ -6,7 +6,7 @@ Updated October 13, 2014
 
 Package to create lbnecode releases.
 
-Use "./go help" to see available commands.
+Use "larrel -h" to see available options.
 
 # Example session
 
@@ -38,6 +38,7 @@ larrel -rdcvbt
 larrel -lp
 
 # Build the product from the new tag.
+# Tar file will be in workdir/reldir/build*
 larrel -u
 
 # Informational commands
