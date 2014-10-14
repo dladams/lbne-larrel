@@ -9,10 +9,15 @@ THISDIR=`dirname $0`
 
 OLDPROD=larsoft
 NEWPROD=lbnecode
+TOPDIR=`pwd`
+HISTFILE=$TOPDIR/history
 
+DBG=
 HELP=
+README=
 ENVCHK=
 REMDIR=
+REMALL=
 DIRMAK=
 CHKOUT=
 VERUPD=
@@ -26,13 +31,15 @@ ENDFLOW=
 PUSHBRA=
 PUSHTAG=
 UPSPROD=
-DEBUG=
-while getopts 'gherdcvbtlpuo:n:q:' flag; do
+SHOW=
+while getopts 'ghHerRdcvbtlpuo:n:q:s:' flag; do
   case "${flag}" in
     g) DBG='true' ;;
     h) HELP='true' ;;
+    H) README='true' ;;
     e) ENVCHK='true' ;;
     r) REMDIR='true' ;;
+    R) REMALL='true' ;;
     d) DIRMAK='true' ;;
     c) CHKOUT='true' ;;
     v) VERUPD='true' ;;
@@ -40,18 +47,79 @@ while getopts 'gherdcvbtlpuo:n:q:' flag; do
     t) TEST='true' ;;
     l) COMMIT='true'; ENDFLOW='true' ;;
     p) PUSHBRA='true'; PUSHTAG='true' ;;
+    u) UPSPROD='true' ;;
     o) OLDVERS="${OPTARG}" ;;
     n) NEWVERS="${OPTARG}" ;;
     q) QUAL="${OPTARG}" ;;
-    u) UPSPROD='true' ;;
+    s) SHOW="${OPTARG}" ;;
     *) "ERROR: Unexpected option ${flag}"; exit 1 ;;
   esac
 done
 
+# For option -H, display README.md and exit.
+if [ -n "$README" ]; then
+  cat $THISDIR/README.md
+  exit 0
+fi
+
+# For option -R, remove everything and exit.
+if [ -n "$REMALL" ]; then
+  echo -e $LINE
+  echo Removing development area.
+  rm -rf workdir
+  rm -f $HISTFILE
+  rm -rf oldversion.txt
+  rm -rf newversion.txt
+  rm -rf ups*.log
+  exit 0
+fi
+
+# For option -s ARG, show ARG and exit.
+if [ -n "$SHOW" ]; then
+  echo $LINE
+  echo Show options:
+  if ! cd $TOPDIR/workdir/srcs/lbnecode 1>/dev/null 2>&1; then
+    echo First use option -c to check out $NEWPROD.
+    exit 1
+  fi
+  if [ "$SHOW" = help ]; then
+    echo "     gitstatus - local git status"
+    echo "       gitdiff - local git diffs"
+    echo " localbranches - list branches in local checkout"
+    echo "remotebranches - list branches in remote repository"
+    echo "     localtags - list tags in local repository"
+    echo "    remotetags - list tags in remote repository"
+  else if [ "$SHOW" = remotetags ]; then
+    git ls-remote --tags origin | grep -v "\^{}"$
+  else if [ "$SHOW" = localtags ]; then
+    git show-ref --tags
+  else if [ "$SHOW" = remotebranches ]; then
+    git branch -r
+  else if [ "$SHOW" = localbranches ]; then
+    git branch
+    echo Local repository changes:
+  else if [ "$SHOW" = gitstatus ]; then
+    echo "----------------------------"
+    git status
+    echo "----------------------------"
+  else if [ "$SHOW" = gitdiff ]; then
+    echo "----------------------------"
+    git diff
+    echo "----------------------------"
+  else
+    echo ERROR: Invalid show option: $SHOW
+    echo ERROR: Use $0 -s help to list all options.
+    exit 1
+  fi; fi; fi; fi; fi; fi; fi
+  exit 0
+fi
+diff
+
+# Determine which stage we process through.
 STAGE4=$BUILD$TEST$COMMIT$ENDFLOW$PUSHBRA$PUSHTAG
 STAGE3=$CHKOUT$VERUPD$STAGE4
 STAGE2=$UPSPROD$STAGE3
-STAGE1=$OLDVERS$NEWVERS$DIRMAK$STAGE2
+STAGE1=$REMDIR$REMALL$OLDVERS$NEWVERS$DIRMAK$STAGE2
 if [ -n "$DBG" ]; then
   echo Stage 1: $STAGE1
   echo Stage 2: $STAGE2
@@ -62,12 +130,15 @@ if [ -z "$STAGE1" ]; then
   HELP='true'
 fi
 
+# Show help and exit.
 if [ -n "$HELP" ]; then
-  echo "Usage: $0 [-hgerdcbtlp] [-o OLDVERS][-n NEWVERS][-q QUAL]"
+  echo "Usage: $0 [-hgerRdcbtlp] [-o OLDVERS][-n NEWVERS][-q QUAL]"
   echo "  -h: Help (this message)."
+  echo "  -H: Display instructions (README.md)."
   echo "  -g: Enable debugging messgages."
   echo "  -e: Check environment"
   echo "  -r: Remove existing development area."
+  echo "  -R: Remove everything and exit."
   echo "  -d: Create new development area."
   echo "  -c: Check out product source."
   echo "  -v: Start flow and update version in checked-out code."
@@ -83,10 +154,12 @@ fi
 
 LINE="\n===================================="
 
+# Source the initialization script.
 echo -e $LINE
 echo Initializing
 source $THISDIR/lbneinit.sh
 
+# For option -e, we display some of the environment.
 if [ -n "$ENVCHK" ]; then
   echo -e $LINE
   echo Checking environment
@@ -100,9 +173,7 @@ if [ -n "$ENVCHK" ]; then
   done
 fi
 
-TOPDIR=`pwd`
-HISTFILE=$TOPDIR/history
-
+# For option -r, we remove any previous builds.
 if [ -n "$REMDIR" ]; then
   echo -e $LINE
   echo Removing development area.
@@ -121,6 +192,8 @@ if [ ! -r workdir ]; then
 fi
 cd workdir
 
+# Retrieve the old (larsoft) version.
+# For option -o, the value is taken from the command line.
 echo -e $LINE
 echo Setting old product version
 OLDVERSFILENAME=$TOPDIR/oldversion.txt
@@ -146,6 +219,8 @@ else
 fi
 echo "Old product and version: $OLDPROD $OLDVERS"
 
+# Retrieve the new (lbnecode) version.
+# For option -o, the value is taken from the command line.
 echo -e $LINE
 echo Setting new product version
 NEWVERSFILENAME=$TOPDIR/newversion.txt
@@ -179,7 +254,7 @@ if [ -z "$NEWVERS" ]; then
 fi
 echo "New product and version: $NEWPROD $NEWVERS"
 
-
+# For option -d, create the development area.
 if [ -n "$DIRMAK" -a -z "$UPSPROD" ]; then
   echo -e $LINE
   echo Creating development area.
@@ -202,6 +277,7 @@ if [ -n "$DIRMAK" -a -z "$UPSPROD" ]; then
    echo creatednewdev >> $HISTFILE
 fi
 
+# Exit stage 1.
 if [ -z "$STAGE2" ]; then
   echo -e $LINE
   if [ -n "$DBG" ]; then echo Exiting before stage 2; fi
@@ -209,12 +285,14 @@ if [ -z "$STAGE2" ]; then
   exit 0
 fi
 
+# Check that development are exists or we are doing UPS build.
 if [ ! -r srcs -a -z "$UPSPROD" ]; then
   echo "ERROR: Use -d to create development area"
   exit 1
 fi
 echo Development area: `pwd`
 
+# For option -u, build UPS product.
 if [ -n "$UPSPROD" ]; then
   echo -e $LINE
   echo Building UPS product $NEWPROD $NEWVERS
@@ -254,10 +332,12 @@ if [ -n "$UPSPROD" ]; then
   mrb makePackage >$TOPDIR/upsmake.log 2>&1
   echo -e $LINE
   if [ -n "$DBG" ]; then echo Exiting after product build; fi
+  ls $TOPDIR/workdir/reldir/build_*/$NEWPROD-*.tar*
   echo Done
   exit 0
 fi
 
+# Exit stage 2.
 if [ -z "$STAGE3" ]; then
   echo -e $LINE
   if [ -n "$DBG" ]; then echo Exiting before stage 3; fi
@@ -265,19 +345,28 @@ if [ -z "$STAGE3" ]; then
   exit 0
 fi
 
+# Set up larsoft.
 echo -e $LINE
 echo Setting up $OLDPROD
-setup $OLDPROD $OLDVERS -q $QUAL
+if [ -n "$DBG" ]; then echo "=====Command: setup $OLDPROD $OLDVERS -q $QUAL"; fi
+if  ! setup $OLDPROD $OLDVERS -q $QUAL; then
+  echo Setup failed for $OLDPROD $OLDVERS
+  exit 1
+fi
 
+# Set up installed products (lbnecode).
 echo -e $LINE
 echo Setting up local products
 for DIR in localProducts*; do
   echo "  $DIR"
+  if [ -n "$DBG" ]; then echo "=====Command: source $DIR/setup"; fi
   source $DIR/setup
 done
 echo MRB_SOURCE=$MRB_SOURCE
 cd $MRB_SOURCE
 
+# For option -c, check out lbnecode.
+# Otherwise move to the area where it was previously checked out.
 if [ -n "$CHKOUT" ]; then
   echo -e $LINE
   echo Checking out $NEWPROD
@@ -303,6 +392,7 @@ else
 fi
 pwd
 
+# For option -v, start a gitflow release.
 if [ -n "$VERUPD" ]; then
   echo -e $LINE
   echo Starting flow
@@ -310,11 +400,15 @@ if [ -n "$VERUPD" ]; then
     echo ERROR: Flow is already started.
     exit 1
   fi
-  git flow release start $NEWVERS
+  if ! git flow release start $NEWVERS; then
+    echo "ERROR: Error creating gitflow release."
+    exit 1
+  fi
   echo startflow >> $HISTFILE
   git branch
 fi
 
+# For option -v, update the lbnecode versions of lbnecode and larsoft.
 if [ -n "$VERUPD" ]; then
   echo -e $LINE
   echo Setting $NEWPROD version to $NEWVERS
@@ -323,6 +417,7 @@ if [ -n "$VERUPD" ]; then
     exit 1
   fi
   mrb uv $NEWPROD $NEWVERS
+  mrb uv $OLDPROD $OLDVERS
   echo versionupdate >> $HISTFILE
   echo Local repository changes:
   echo "----------------------------"
@@ -330,6 +425,7 @@ if [ -n "$VERUPD" ]; then
   echo "----------------------------"
 fi
 
+# Exit stage 3.
 if [ -z "$STAGE4" ]; then
   echo -e $LINE
   if [ -n "$DBG" ]; then echo Exiting before stage 4; fi
@@ -337,12 +433,17 @@ if [ -z "$STAGE4" ]; then
   exit 0
 fi
 
-echo $LINE
+# Do MRB setup.
+echo -e $LINE
 echo Setting up for build or test...
 cd $MRB_BUILDDIR
 pwd
-mrbsetenv
+if ! mrbsetenv; then
+  echo ERROR: mrbsetenv failed.
+  exit 1
+fi
 
+# For option -b, build lbnecode.
 if [ -n "$BUILD" ]; then
   echo -e $LINE
   echo Building...
@@ -354,6 +455,7 @@ if [ -n "$BUILD" ]; then
   echo buildpassed >> $HISTFILE
 fi
 
+# For option -t, build lbnecode.
 if [ -n "$TEST" ]; then
   echo -e $LINE
   echo Testing...
@@ -365,6 +467,7 @@ if [ -n "$TEST" ]; then
   echo testpassed >> $HISTFILE
 fi
 
+# For option -c, commit changes to release branch.
 if [ -n "$COMMIT" ]; then
   echo -e $LINE
   echo Committing flow...
@@ -380,6 +483,10 @@ if [ -n "$COMMIT" ]; then
   fi
 fi
 
+# For option -l, end gitflow release:
+# --copy changes to develop and master branches,
+# --create tag, and
+# --delete release branch.
 if [ -n "$ENDFLOW" ]; then
   echo -e $LINE
   echo Finishing flow...
@@ -391,6 +498,7 @@ if [ -n "$ENDFLOW" ]; then
   git config --global core.editor true
   if ! git flow release finish -m "Ended flow for $NEWPROD $NEWVERS" $NEWVERS; then
     echo ERROR: Finishing flow failed.
+    git config --global core.editor $OLDEDITOR
     exit 1
   fi
   git config --global core.editor $OLDEDITOR
@@ -398,9 +506,11 @@ if [ -n "$ENDFLOW" ]; then
   echo flowfinished >> $HISTFILE
 fi
 
+# For option -p, push the branch changes back to the repository.
 if [ -n "$PUSHBRA" ]; then
   echo -e $LINE
   echo Pushing branches...
+  cd $MRB_SOURCE/$NEWPROD
   if ! git push origin master develop; then
     echo ERROR: Branch push  failed.
     exit 1
@@ -408,9 +518,11 @@ if [ -n "$PUSHBRA" ]; then
   echo branchespushed >> $HISTFILE
 fi
 
+# For option -p, push the new tag back to the repository.
 if [ -n "$PUSHTAG" ]; then
   echo -e $LINE
   echo Pushing tags...
+  cd $MRB_SOURCE/$NEWPROD
   if ! git push --tags; then
     echo ERROR: Tag push failed.
     exit 1

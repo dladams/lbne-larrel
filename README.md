@@ -32,5 +32,20 @@ larrel -n v03_01_01
 # Check out, udate version, build and test.
 larrel -rdcvbt
 
-# Build the product.
+# End flow and push changes back to repository.
+# The develop and master branches are updated and a new
+# tag is created using the lbnecode version.
+larrel -lp
+
+# Build the product from the new tag.
 larrel -u
+
+# Informational commands
+upslist larsoft
+upslist lbnecode
+larrel -s gitstatus
+larrel -s gitdiff
+larrel -s localbranches
+larrel -s remotebranches
+larrel -s localtags
+larrel -s remotetags
