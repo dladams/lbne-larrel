@@ -292,16 +292,41 @@ if [ ! -r srcs -a -z "$UPSPROD" ]; then
 fi
 echo Development area: `pwd`
 
+# Find the current platform (slf5, slf6, ...)
+# Or we can use this: 
+#   setup cetpkgsupport
+#   get-directory-name os 
+PLATFORM=
+#SLF5=`lsb_release -a | grep 5.4`
+#SLF6=`lsb_release -a | grep 6.4`
+#if test -n "$SLF5" -a -z "$SLF6"; then
+  #PLATFORM=slf5
+#else if test -z "$SLF5" -a -n "$SLF6"; then
+  #PLATFORM=slf6
+#fi; fi
+PLATFORM=`get-directory-name os`
+
 # For option -u, build UPS product.
 if [ -n "$UPSPROD" ]; then
   echo -e $LINE
   echo Building UPS product $NEWPROD $NEWVERS
-  rm -rf reldir
-  if ! mkdir reldir; then
+  if test -z "$PLATFORM"; then
+    echo Platform could not be determined.
+    exit 1
+  fi
+  RELDIR=`echo reldir-$PLATFORM-$QUAL | sed 's/:/-/g'`
+  echo Release directory: $RELDIR
+  if [ -r $RELDIR ]; then
+    echo Release directory already exists.
+    echo Delete workdir/$RELDIR it before to rebuilding release.
+    exit 1
+  fi
+  rm -rf $RELDIR
+  if ! mkdir $RELDIR; then
     echo "ERROR: Unable to to create release directory."
     exit 1
   fi
-  cd reldir
+  cd $RELDIR
   echo MRB_SOURCE=$MRB_SOURCE
   if ! mrb newDev -v $OLDVERS -q $QUAL; then
     echo "ERROR: Unable to make development area for $OLDVERS"
@@ -332,7 +357,7 @@ if [ -n "$UPSPROD" ]; then
   mrb makePackage >$TOPDIR/upsmake.log 2>&1
   echo -e $LINE
   if [ -n "$DBG" ]; then echo Exiting after product build; fi
-  ls $TOPDIR/workdir/reldir/build_*/$NEWPROD-*.tar*
+  ls $TOPDIR/workdir/$RELDIR/build_*/$NEWPROD-*.tar*
   echo Done
   exit 0
 fi
