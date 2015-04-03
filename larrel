@@ -11,6 +11,7 @@ OLDPROD=larsoft
 NEWPROD=lbnecode
 TOPDIR=`pwd`
 HISTFILE=$TOPDIR/history
+COMHISTFILE=$TOPDIR/comhistory
 
 DBG=
 HELP=
@@ -22,7 +23,7 @@ DIRMAK=
 CHKOUT=
 VERUPD=
 BUILD=
-QUAL=e6:prof
+QUAL=e7:prof
 Test=
 OLDVERS=
 NEWVERS=
@@ -32,7 +33,7 @@ PUSHBRA=
 PUSHTAG=
 UPSPROD=
 SHOW=
-while getopts 'ghHerRdcvbtlpuo:n:q:s:' flag; do
+while getopts 'ghHerRdcvbtClpPuo:n:q:s:' flag; do
   case "${flag}" in
     g) DBG='true' ;;
     h) HELP='true' ;;
@@ -45,8 +46,10 @@ while getopts 'ghHerRdcvbtlpuo:n:q:s:' flag; do
     v) VERUPD='true' ;;
     b) BUILD='true' ;;
     t) TEST='true' ;;
+    C) COMMIT='true' ;;
     l) COMMIT='true'; ENDFLOW='true' ;;
     p) PUSHBRA='true'; PUSHTAG='true' ;;
+    P) PUSHTAG='true' ;;
     u) UPSPROD='true' ;;
     o) OLDVERS="${OPTARG}" ;;
     n) NEWVERS="${OPTARG}" ;;
@@ -68,6 +71,7 @@ if [ -n "$REMALL" ]; then
   echo Removing development area.
   rm -rf workdir
   rm -f $HISTFILE
+  rm -f $COMHISTFILE
   rm -rf oldversion.txt
   rm -rf newversion.txt
   rm -rf ups*.log
@@ -106,14 +110,17 @@ if [ -n "$SHOW" ]; then
     echo "----------------------------"
     git diff
     echo "----------------------------"
+  else if [ "$SHOW" = q ]; then
+    echo "----------------------------"
+    echo QUAL=$QUAL
+    echo "----------------------------"
   else
     echo ERROR: Invalid show option: $SHOW
     echo ERROR: Use $0 -s help to list all options.
     exit 1
-  fi; fi; fi; fi; fi; fi; fi
+  fi; fi; fi; fi; fi; fi; fi; fi
   exit 0
 fi
-diff
 
 # Determine which stage we process through.
 STAGE4=$BUILD$TEST$COMMIT$ENDFLOW$PUSHBRA$PUSHTAG
@@ -144,8 +151,10 @@ if [ -n "$HELP" ]; then
   echo "  -v: Start flow and update version in checked-out code."
   echo "  -b: Build product."
   echo "  -t: Test product."
+  echo "  -C: Commit local changes."
   echo "  -l: Commit local changes and end flow."
-  echo "  -p: Push tag to repository."
+  echo "  -p: Push changes to development and release branches."
+  echo "  -P: Push changes only to release branch (used when push to development fails)."
   echo "  -u: Make UPS product"
   echo "  -o OLDVERS: Set the version for the old product (larsoft)"
   echo "  -n NEWVERS: Set the version for the new product (lbnecode)"
@@ -179,18 +188,8 @@ if [ -n "$REMDIR" ]; then
   echo Removing development area.
   rm -rf workdir
   rm -f $HISTFILE
+  rm -f $COMHISTFILE
 fi
-
-if [ ! -r workdir ]; then
-  echo -e $LINE
-  echo Creating workdir
-  if ! mkdir workdir; then
-    echo ERROR: Unable to create workdir
-    exit 1
-  fi
-  echo createdworkdir >> $HISTFILE
-fi
-cd workdir
 
 # Retrieve the old (larsoft) version.
 # For option -o, the value is taken from the command line.
@@ -254,6 +253,29 @@ if [ -z "$NEWVERS" ]; then
 fi
 echo "New product and version: $NEWPROD $NEWVERS"
 
+# Add header to the command history file.
+echo >>$COMHISTFILE
+echo "# "`date` >>$COMHISTFILE
+echo "# $0 $*" >>$COMHISTFILE
+
+# For -r, create the working directory.
+if [ ! -r workdir ]; then
+  echo -e $LINE
+  echo Creating workdir
+  COM="mkdir workdir"
+  echo $COM >> $COMHISTFILE
+  if ! $COM; then
+    echo ERROR: Unable to create workdir
+    exit 1
+  fi
+  echo createdworkdir >> $HISTFILE
+fi
+
+# Move to the working directory.
+COM="cd $TOPDIR/workdir"
+echo $COM >>$COMHISTFILE
+$COM
+
 # For option -d, create the development area.
 if [ -n "$DIRMAK" -a -z "$UPSPROD" ]; then
   echo -e $LINE
@@ -270,8 +292,10 @@ if [ -n "$DIRMAK" -a -z "$UPSPROD" ]; then
     echo "ERROR: Development area already exists"
     exit 1
   fi
-  if ! mrb newDev -v $OLDVERS -q $QUAL; then
-    echo "ERROR: mrb newDev -v $OLDVERS -q $QUAL failed."
+  COM="mrb newDev -v $OLDVERS -q $QUAL"
+  echo $COM >>$COMHISTFILE
+  if ! $COM; then
+    echo "ERROR: Command failed: $COM"
     exit 1
   fi
    echo creatednewdev >> $HISTFILE
@@ -326,7 +350,10 @@ if [ -n "$UPSPROD" ]; then
     echo "ERROR: Unable to to create release directory."
     exit 1
   fi
-  cd $RELDIR
+  COM="cd $RELDIR"
+  echo $COM >>$COMHISTFILE
+  $COM
+  echo $RELDIR >>$HISTFILE
   echo MRB_SOURCE=$MRB_SOURCE
   if ! mrb newDev -v $OLDVERS -q $QUAL; then
     echo "ERROR: Unable to make development area for $OLDVERS"
@@ -338,9 +365,12 @@ if [ -n "$UPSPROD" ]; then
   done
   echo MRB_SOURCE=$MRB_SOURCE
   cd $MRB_SOURCE
-  LOG=$TOPDIR/upscheckout.log
+  LOG=$TOPDIR/$RELDIR/upscheckout.log
+  COM="mrb gitCheckout -t $NEWVERS $NEWPROD"
   echo Checking out $NEWPROD $NEWVERS. Log is $LOG.
-  if ! mrb gitCheckout -t $NEWVERS $NEWPROD >$LOG 2>&1; then
+  #if ! mrb gitCheckout -t $NEWVERS $NEWPROD >$LOG 2>&1; then
+  echo $COM>>$COMHISTFILE
+  if ! $COM >>$LOG 2>&1; then
     echo "ERROR: Unable to check out $NEWPROD $NEWVERS"
     exit 1
   fi 
@@ -351,10 +381,10 @@ if [ -n "$UPSPROD" ]; then
   fi 
   cd $MRB_BUILDDIR
   mrbsetenv
-  echo Building. Log is $TOPDIR/upsbuild.log.
-  mrb b >$TOPDIR/upsbuild.log 2>&1
-  echo Making product. Log is $TOPDIR/upsmake.log.
-  mrb makePackage >$TOPDIR/upsmake.log 2>&1
+  echo Building. Log is $TOPDIR/$RELDIR/upsbuild.log.
+  mrb b >$TOPDIR/$RELDIR/upsbuild.log 2>&1
+  echo Making product. Log is $TOPDIR/$RELDIR/upsmake.log.
+  mrb makePackage >$TOPDIR/$RELDIR/upsmake.log 2>&1
   echo -e $LINE
   if [ -n "$DBG" ]; then echo Exiting after product build; fi
   ls $TOPDIR/workdir/$RELDIR/build_*/$NEWPROD-*.tar*
@@ -374,7 +404,9 @@ fi
 echo -e $LINE
 echo Setting up $OLDPROD
 if [ -n "$DBG" ]; then echo "=====Command: setup $OLDPROD $OLDVERS -q $QUAL"; fi
-if  ! setup $OLDPROD $OLDVERS -q $QUAL; then
+COM="setup $OLDPROD $OLDVERS -q $QUAL"
+echo $COM >>$COMHISTFILE
+if ! $COM; then
   echo Setup failed for $OLDPROD $OLDVERS
   exit 1
 fi
@@ -385,10 +417,14 @@ echo Setting up local products
 for DIR in localProducts*; do
   echo "  $DIR"
   if [ -n "$DBG" ]; then echo "=====Command: source $DIR/setup"; fi
-  source $DIR/setup
+  COM="source $DIR/setup"
+  echo $COM >>$COMHISTFILE
+  $COM
 done
 echo MRB_SOURCE=$MRB_SOURCE
-cd $MRB_SOURCE
+COM="cd $MRB_SOURCE"
+echo $COM >>$COMHISTFILE
+$COM
 
 # For option -c, check out lbnecode.
 # Otherwise move to the area where it was previously checked out.
@@ -399,23 +435,29 @@ if [ -n "$CHKOUT" ]; then
     echo "ERROR: $NEWPROD is already checked out."
     exit 1
   fi
-  if ! mrb gitCheckout $NEWPROD; then
+  COM="mrb gitCheckout $NEWPROD"
+  echo $COM >>$COMHISTFILE
+  if ! $COM; then
     echo ERROR: Checkout failed
     exit 1
   fi
   echo checkout >> $HISTFILE
-  cd $NEWPROD
+  COM="cd $NEWPROD"
+  echo $COM >>$COMHISTFILE
+  $COM
+  echo "Listing branches:"
   git branch
 else
   echo -e $LINE
   echo Moving to product area.
-  if ! cd $NEWPROD; then
+  COM="cd $NEWPROD"
+  echo $COM >>$COMHISTFILE
+  if ! $COM; then
     echo ERROR: Product area not found.
     echo "ERROR: Use larrsoft -c to check out $NEWPROD"
     exit 1
   fi
 fi
-pwd
 
 # For option -v, start a gitflow release.
 if [ -n "$VERUPD" ]; then
@@ -425,11 +467,22 @@ if [ -n "$VERUPD" ]; then
     echo ERROR: Flow is already started.
     exit 1
   fi
-  if ! git flow release start $NEWVERS; then
+  if true; then
+    echo
+    echo Switching to master
+    COM="git checkout master"
+    $COM
+  fi
+  echo
+  echo Starting flow.
+  COM="git flow release start $NEWVERS"
+  echo $COM >>$COMHISTFILE
+  if ! $COM; then
     echo "ERROR: Error creating gitflow release."
     exit 1
   fi
   echo startflow >> $HISTFILE
+  echo "Listing branches:"
   git branch
 fi
 
@@ -441,9 +494,11 @@ if [ -n "$VERUPD" ]; then
     echo ERROR: Version has already been updated.
     exit 1
   fi
-  mrb uv $NEWPROD $NEWVERS
-  mrb uv $OLDPROD $OLDVERS
+  COM="mrb uv $NEWPROD $NEWVERS"
+  echo $COM >>$COMHISTFILE
+  $COM
   echo versionupdate >> $HISTFILE
+  echo
   echo Local repository changes:
   echo "----------------------------"
   git diff ups/product_deps
@@ -461,9 +516,12 @@ fi
 # Do MRB setup.
 echo -e $LINE
 echo Setting up for build or test...
-cd $MRB_BUILDDIR
-pwd
-if ! mrbsetenv; then
+COM="cd $MRB_BUILDDIR"
+echo $COM >>$COMHISTFILE
+$COM
+COM=mrbsetenv
+echo $COM >>$COMHISTFILE
+if ! $COM; then
   echo ERROR: mrbsetenv failed.
   exit 1
 fi
@@ -472,7 +530,9 @@ fi
 if [ -n "$BUILD" ]; then
   echo -e $LINE
   echo Building...
-  if ! mrb build; then
+  COM="mrb build"
+  echo $COM >>$COMHISTFILE
+  if ! $COM; then
     echo Build failed.
     echo buildfailed >> $HISTFILE
     exit 1
@@ -480,11 +540,13 @@ if [ -n "$BUILD" ]; then
   echo buildpassed >> $HISTFILE
 fi
 
-# For option -t, build lbnecode.
+# For option -t, test lbnecode.
 if [ -n "$TEST" ]; then
   echo -e $LINE
   echo Testing...
-  if ! mrb test; then
+  COM="mrb test"
+  echo $COM >>$COMHISTFILE
+  if ! $COM; then
     echo Test failed.
     echo testfailed >> $HISTFILE
     exit 1
@@ -492,15 +554,24 @@ if [ -n "$TEST" ]; then
   echo testpassed >> $HISTFILE
 fi
 
-# For option -c, commit changes to release branch.
+# For option -C (and -l), commit changes to the release branch.
 if [ -n "$COMMIT" ]; then
   echo -e $LINE
   echo Committing flow...
   if grep committed $HISTFILE 1>/dev/null 2>&1; then
     echo Commit is already done.
   else
-    cd $MRB_SOURCE/$NEWPROD
-    if ! git commit -a -m "Set package version to $NEWVERS"; then
+    COM="cd $MRB_SOURCE/$NEWPROD"
+    echo $COM >>$COMHISTFILE
+    $COM
+    echo
+    echo Show branches:
+    git branch
+    echo
+    echo Committing...
+    COM="git commit -a -m Set_package_version_to_$NEWVERS"
+    echo $COM >>$COMHISTFILE
+    if ! $COM; then
       echo ERROR: Git commit failed.
       exit 1
     fi
@@ -520,35 +591,60 @@ if [ -n "$ENDFLOW" ]; then
   # Capture the current git editor and change the value to something
   # that always succeeds without changing the file.
   OLDEDITOR=`git config --global core.editor`
-  git config --global core.editor true
-  if ! git flow release finish -m "Ended flow for $NEWPROD $NEWVERS" $NEWVERS; then
+  COMED1="git config --global core.editor true"
+  COMED2="git config --global core.editor $OLDEDITOR"
+  COM="git flow release finish -m Ended_flow_for_${NEWPROD}_$NEWVERS $NEWVERS"
+  $COMED1
+  echo $COM >>$COMHISTFILE
+  if ! $COM; then
     echo ERROR: Finishing flow failed.
     git config --global core.editor $OLDEDITOR
+    $COMED2
     exit 1
   fi
-  git config --global core.editor $OLDEDITOR
+  $COMED2
   echo "%%%%%%%%%%%%%%%"
   echo flowfinished >> $HISTFILE
 fi
+
+DRYRUN="--dry-run"
 
 # For option -p, push the branch changes back to the repository.
 if [ -n "$PUSHBRA" ]; then
   echo -e $LINE
   echo Pushing branches...
-  cd $MRB_SOURCE/$NEWPROD
-  if ! git push origin master develop; then
-    echo ERROR: Branch push  failed.
+  COM="cd $MRB_SOURCE/$NEWPROD"
+  echo $COM >>$COMHISTFILE
+  $COM
+  echo
+  echo master...
+  COM="git push $DRYRUN origin master"
+  echo $COM >>$COMHISTFILE
+  if ! $COM; then
+    echo ERROR: Branch push to master failed.
     exit 1
+  fi
+  echo
+  echo develop...
+  COM="git push $DRYRUN origin develop"
+  echo $COM >>$COMHISTFILE
+  if ! $COM; then
+    echo ERROR: Branch push to develop failed.
+    echo Continuing after error...
   fi
   echo branchespushed >> $HISTFILE
 fi
 
-# For option -p, push the new tag back to the repository.
+# For option -p or -P, push the new tag back to the repository.
 if [ -n "$PUSHTAG" ]; then
   echo -e $LINE
   echo Pushing tags...
-  cd $MRB_SOURCE/$NEWPROD
-  if ! git push --tags; then
+  COM="cd $MRB_SOURCE/$NEWPROD"
+  echo $COM >>$COMHISTFILE
+  $COM
+  COM="git push $DRYRUN --tags"
+  echo $COM >>$COMHISTFILE
+  if ! $COM; then
     echo ERROR: Tag push failed.
     exit 1
   fi

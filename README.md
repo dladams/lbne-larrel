@@ -41,6 +41,9 @@ larrel -lp
 # Tar file will be in workdir/reldir/build*
 larrel -u
 
+# Or to build with a specific qualifier:
+larrel -uq e7:debug
+
 # Informational commands
 upslist larsoft
 upslist lbnecode
