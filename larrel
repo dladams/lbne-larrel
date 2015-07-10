@@ -355,36 +355,49 @@ if [ -n "$UPSPROD" ]; then
   $COM
   echo $RELDIR >>$HISTFILE
   echo MRB_SOURCE=$MRB_SOURCE
-  if ! mrb newDev -v $OLDVERS -q $QUAL; then
+  COM="mrb newDev -v $OLDVERS -q $QUAL"
+  echo $COM>>$COMHISTFILE
+  if ! $COM; then
     echo "ERROR: Unable to make development area for $OLDVERS"
     exit 1
   fi
+  echo MRB_SOURCE=$MRB_SOURCE
   for DIR in localProducts*; do
     echo "  $DIR"
-    source $DIR/setup
+    COM="source $DIR/setup"
+    $COM
+    echo $COM>>$COMHISTFILE
   done
-  echo MRB_SOURCE=$MRB_SOURCE
-  cd $MRB_SOURCE
-  LOG=$TOPDIR/$RELDIR/upscheckout.log
+  COM="cd $MRB_SOURCE"
+  $COM
+  echo $COM>>$COMHISTFILE
+  UPSLOG=$TOPDIR/workdir/$RELDIR/upscheckout.log
   COM="mrb gitCheckout -t $NEWVERS $NEWPROD"
-  echo Checking out $NEWPROD $NEWVERS. Log is $LOG.
+  echo Checking out $NEWPROD $NEWVERS. Log is $UPSLOG.
   #if ! mrb gitCheckout -t $NEWVERS $NEWPROD >$LOG 2>&1; then
   echo $COM>>$COMHISTFILE
-  if ! $COM >>$LOG 2>&1; then
+  if ! $COM >>$UPSLOG 2>&1; then
     echo "ERROR: Unable to check out $NEWPROD $NEWVERS"
     exit 1
   fi 
-  if grep ^error: $LOG; then
+  if grep ^error: $UPSLOG; then
     echo "ERROR: Error checking out $NEWPROD $NEWVERS:"
-    grep ^error: $LOG
+    grep ^error: $UPSLOG
     exit 1
   fi 
-  cd $MRB_BUILDDIR
-  mrbsetenv
-  echo Building. Log is $TOPDIR/$RELDIR/upsbuild.log.
-  mrb b >$TOPDIR/$RELDIR/upsbuild.log 2>&1
-  echo Making product. Log is $TOPDIR/$RELDIR/upsmake.log.
-  mrb makePackage >$TOPDIR/$RELDIR/upsmake.log 2>&1
+  echo MRB_SOURCE=$MRB_SOURCE
+  COM="cd $MRB_BUILDDIR"
+  $COM
+  echo $COM>>$COMHISTFILE
+  COM=mrbsetenv
+  $COM
+  echo $COM>>$COMHISTFILE
+  UPSLOG=$TOPDIR/workdir/$RELDIR/upsbuild.log
+  echo Building. Log is $UPSLOG
+  mrb b >$UPSLOG 2>&1
+  UPSLOG=$TOPDIR/workdir/$RELDIR/upsmake.log
+  echo Making product. Log is $UPSLOG
+  mrb makePackage >$UPSLOG 2>&1
   echo -e $LINE
   if [ -n "$DBG" ]; then echo Exiting after product build; fi
   ls $TOPDIR/workdir/$RELDIR/build_*/$NEWPROD-*.tar*
@@ -608,6 +621,7 @@ if [ -n "$ENDFLOW" ]; then
 fi
 
 DRYRUN="--dry-run"
+DRYRUN=
 
 # For option -p, push the branch changes back to the repository.
 if [ -n "$PUSHBRA" ]; then
